@@ -2,80 +2,80 @@ const WebSocket = require('ws');
 
 const wss = new WebSocket.Server({ port: 420 });
 
-let esp32Clients = new Set(); // Conjunto para armazenar clientes ESP32
-let frontendClients = new Set(); // Conjunto para armazenar clientes front-end
+let clients = new Map(); // Mapeia nome do cliente para WebSocket
 
 wss.on('connection', (ws) => {
   console.log('Novo cliente conectado');
 
-  ws.isIdentified = false; // Adicionamos uma propriedade para verificar se o cliente já foi identificado
+  ws.isIdentified = false; // Flag para identificar o cliente
 
   ws.on('message', (message) => {
-    console.log(`Mensagem recebida do cliente: ${message}`);
+    console.log(`Mensagem recebida: ${message}`);
 
-    // Se o cliente ainda não foi identificado, tente identificá-lo
-    if (!ws.isIdentified) {
-      try {
-        const data = JSON.parse(message);
-        if (data.type === 'device') {
-          ws.isIdentified = true;
-          if (data.device === 'esp32') {
-            esp32Clients.add(ws);
-            console.log('Cliente identificado como ESP32');
-
-            // Enviar mensagens periódicas apenas para o ESP32
-            const interval = setInterval(() => {
-              if (ws.readyState === WebSocket.OPEN) {
-                // ws.send(JSON.stringify({ type: 'ping', message: 'Mensagem periódica do servidor' }));
-              }
-            }, 5000);
-
-            ws.on('close', () => {
-              clearInterval(interval);
-              esp32Clients.delete(ws);
-              console.log('ESP32 desconectado');
-            });
-          } else if (data.device === 'frontend') {
-            frontendClients.add(ws);
-            console.log('Cliente identificado como Front-end');
-          }
-        }
-      } catch (e) {
-        console.error('Erro ao identificar o cliente:', e);
-        // Opcionalmente, você pode fechar a conexão se a identificação falhar
-        ws.close();
-      }
-      return; // Não processar mais até que o cliente seja identificado
-    }
-
-    // Processar mensagens após identificação
     try {
       const data = JSON.parse(message);
 
-      if (data.type === 'card' && esp32Clients.has(ws)) {
-        const uid = data.uid;
-        console.log(`UID do cartão recebido: ${uid}`);
+      // Identificação do cliente
+      if (!ws.isIdentified) {
+        if (data.type === 'device' && data.device) {
+          const clientName = data.device;
 
-        // Encaminhar o UID para todos os clientes front-end
-        frontendClients.forEach((client) => {
-          if (client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify({ type: 'card', uid }));
-          }
-        });
+          // Adiciona o cliente ao Map com o nome como chave
+          clients.set(clientName, ws);
+          ws.isIdentified = true;
+          ws.clientName = clientName;
+
+          console.log(`Cliente identificado como: ${clientName}`);
+
+          // Configura evento para remover cliente ao desconectar
+          ws.on('close', () => {
+            clients.delete(clientName);
+            console.log(`Cliente desconectado: ${clientName}`);
+          });
+        } else {
+          console.error('Erro: Nome do cliente ausente.');
+          ws.close(); // Fecha a conexão se não enviar um nome válido
+        }
+        return; // Interrompe até que o cliente esteja identificado
+      }
+
+      // Processamento de solicitações de lista
+      if (data.type === 'list_request') {
+        // Obter a lista de clientes conectados, excluindo o próprio solicitante
+        const clientList = Array.from(clients.keys()).filter(name => name !== ws.clientName);
+
+        // Enviar a lista de clientes para o solicitante
+        ws.send(JSON.stringify({ type: 'client_list', clients: clientList }));
+        console.log(`Lista de clientes enviada para ${ws.clientName}`);
+      }
+      else if (data.type === 'card' && data.targetName) {
+        const targetName = data.targetName;
+        const targetClient = clients.get(targetName);
+
+        if (targetClient && targetClient.readyState === WebSocket.OPEN) {
+          targetClient.send(JSON.stringify({ type: 'card', uid: data.uid, from: ws.clientName }));
+          console.log(`Mensagem enviada de ${ws.clientName} para ${targetName}: ${data.content}`);
+        } else {
+          console.error(`Cliente ${targetName} não está conectado.`);
+          ws.send(JSON.stringify({ type: 'error', message: `Cliente ${targetName} não está conectado.` }));
+        }
+      }
+
+      // Processamento de mensagens para clientes identificados
+      else if (data.type === 'message' && data.targetName) {
+        const targetName = data.targetName;
+        const targetClient = clients.get(targetName);
+
+        if (targetClient && targetClient.readyState === WebSocket.OPEN) {
+          targetClient.send(JSON.stringify({ type: 'message', content: data.content, from: ws.clientName }));
+          console.log(`Mensagem enviada de ${ws.clientName} para ${targetName}: ${data.content}`);
+        } else {
+          console.error(`Cliente ${targetName} não está conectado.`);
+          ws.send(JSON.stringify({ type: 'error', message: `Cliente ${targetName} não está conectado.` }));
+        }
       }
     } catch (e) {
       console.error('Erro ao processar a mensagem:', e);
-    }
-  });
-
-  ws.on('close', () => {
-    if (esp32Clients.has(ws)) {
-      esp32Clients.delete(ws);
-      console.log('ESP32 desconectado');
-    }
-    if (frontendClients.has(ws)) {
-      frontendClients.delete(ws);
-      console.log('Cliente Front-end desconectado');
     }
   });
 

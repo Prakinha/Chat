@@ -22,10 +22,54 @@ interface CompartmentMessage extends Message {
 }
 
 const RoomPage: NextPage = () => {
+  
   const router = useRouter();
   const { room, stranger } = router.query;
   const isStranger = !!stranger;
 
+    const [ws, setWs] = useState<WebSocket | null>(null);
+
+  useEffect(() => {
+    const socket = new WebSocket("ws://192.168.202.23:420");
+
+    socket.onopen = () => {
+      console.log("Conexão WebSocket estabelecida");
+      const initMessage = JSON.stringify({ type: 'device', device: 'frontend' });
+      socket.send(initMessage);
+    };
+
+    socket.onmessage = (event) => {
+      const message = event.data;
+      console.log("Mensagem recebida do servidor:", message);
+
+      try {
+        const data = JSON.parse(message);
+        if (data.type === 'message') {
+          //mensagem estrangeiro
+          setStrangerMessage(data.content);
+          sendMessage();
+        }
+
+      } catch (e) {
+        console.error('Erro ao processar a mensagem:', e);
+      }
+    };
+
+    socket.onclose = () => {
+      console.log("Conexão WebSocket fechada");
+    };
+
+    socket.onerror = (error) => {
+      console.error("Erro no WebSocket:", error);
+    };
+
+    setWs(socket);
+
+    // Limpar na desmontagem do componente
+    return () => {
+      socket.close();
+    };
+  }, []);
   const [socket, setSocket] = useState<Socket | undefined>();
   const [messages, setMessages] = useState<CompartmentMessage[]>([]);
   const [clientMessage, setClientMessage] = useState<string>("");
@@ -37,9 +81,9 @@ const RoomPage: NextPage = () => {
   const [volume, setVolume] = useState<number>(1);
 
   // Estados para preferências de estilo do estrangeiro
-  const defaultFontFamily = "Estrangeiro";
+  const defaultFontFamily = "NovaFonte1";
   const defaultFontColor = "var(--primary-color)"; // Verde meio catarrento
-  const defaultFontSize = "42px"; // Tamanho padrão maior
+  const defaultFontSize = "72px"; // Tamanho padrão maior
 
   const [fontFamily, setFontFamily] = useState<string>(defaultFontFamily);
   const [fontColor, setFontColor] = useState<string>(defaultFontColor);
@@ -54,6 +98,9 @@ const RoomPage: NextPage = () => {
   const strangerInputRef = useRef<HTMLInputElement>(null);
 
   const decodingEnabledRef = useRef(isDecodingEnabled);
+
+
+
   useEffect(() => {
     decodingEnabledRef.current = isDecodingEnabled;
   }, [isDecodingEnabled]);
@@ -581,7 +628,7 @@ const RoomPage: NextPage = () => {
             style={{
               overflowY: "auto",
               overflowX: "hidden",
-              maxHeight: "400px",
+              maxHeight: "1200px",
             }}
           >
             {messages.map((message) => (
@@ -603,7 +650,7 @@ const RoomPage: NextPage = () => {
                     : {
                         fontFamily: "Clacon",
                         color: "var(--primary-color)",
-                        fontSize: "32px",
+                        fontSize: "42px", //fonte do cliente
                       }
                 }
               >
@@ -632,7 +679,7 @@ const RoomPage: NextPage = () => {
                 onBlur={handleInputBlur}
                 style={{
                   fontFamily: "Clacon",
-                  fontSize: "32px",
+                  fontSize: "42px",
                   color: "var(--primary-color)",
                 }}
               />

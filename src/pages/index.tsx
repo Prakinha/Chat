@@ -2,20 +2,21 @@ import { NextPage } from "next";
 import Head from "next/head";
 import { useRouter } from "next/router";
 import { useState, useEffect } from "react";
-
+import ReconnectingWebSocket from 'reconnecting-websocket';
 import styles from "../styles/Home.module.scss";
 
 const preHome: NextPage = () => {
   const router = useRouter();
-  const [ws, setWs] = useState<WebSocket | null>(null);
+  const [isReady, setIsReady] = useState<boolean>(false);
+  type WebSocketType = WebSocket | ReconnectingWebSocket;
+
+  const [ws, setWs] = useState<WebSocketType | null>(null);
 
   useEffect(() => {
-    // Estabelecer conexão WebSocket
-    const socket = new WebSocket("ws://192.168.1.44:420"); // Certifique-se de que a porta está correta e acessível
+    const socket = new ReconnectingWebSocket("ws://192.168.7.23:420");
 
     socket.onopen = () => {
       console.log("Conexão WebSocket estabelecida");
-      // Enviar mensagem de identificação
       const initMessage = JSON.stringify({ type: 'device', device: 'frontend' });
       socket.send(initMessage);
     };
@@ -28,7 +29,12 @@ const preHome: NextPage = () => {
         const data = JSON.parse(message);
         if (data.type === 'card') {
           handleCardUID(data.uid);
+        } else if (data.type === 'message') {
+          // Ao receber a mensagem "on", define isReady para true
+          console.log("Mensagem 'on' recebida. Liberando a interface.");
+          setIsReady(true);
         }
+        
       } catch (e) {
         console.error('Erro ao processar a mensagem:', e);
       }
@@ -44,7 +50,6 @@ const preHome: NextPage = () => {
 
     setWs(socket);
 
-    // Limpar na desmontagem do componente
     return () => {
       socket.close();
     };
@@ -56,49 +61,45 @@ const preHome: NextPage = () => {
 
     if (cardUID === "c37137aa") {
       // Redirecionar para a página de usuário normal
-      router.push("/123"); // Substitua "/123" pela rota desejada
+      router.push("/123"); 
     } else if (cardUID === "3b5bb280") {
       // Redirecionar para a página do usuário estrangeiro
       router.push({
-        pathname: "/123", // Substitua "/123" pela rota desejada
+        pathname: "/123", 
         query: {
           stranger: true,
         },
       });
     } else {
       // UID não reconhecido
-      alert("Cartão não reconhecido");
+      alert("Cartão não reconhecido"); // Fazer a tela de pop-up
     }
   };
 
-  return (
+    return (
     <>
       <Head>
-        <title>Entre numa sala</title>
+        <title>Apresente Suas Credenciais</title>
       </Head>
       <section className={styles.main}>
-        <input
-          type="text"
-          placeholder="Aproxime o cartão"
-          // O input pode não ser necessário se a entrada for via cartão
-          disabled
-          className="glow"
-        />
-        <button
-          type="button"
-          disabled
-          // Os botões podem ser removidos se a ação for automática via cartão
-          className="glow"
-        >
-          Entrar como usuário
-        </button>
-        <button
-          type="button"
-          disabled
-          className="glow"
-        >
-          Entrar como o &quot;estrangeiro&quot;
-        </button>
+        {!isReady ? (
+          <div className={styles.connecting}>
+            <p className="textglow">Servidor Fora de Operacao...</p>
+            {/* Opcional: Adicionar um spinner ou indicador visual */}
+          </div>
+        ) : (
+          <div className={styles.ready}>
+            <input
+              type="text"
+              placeholder="Aproxime o cartão"
+              // O input pode não ser necessário se a entrada for via cartão
+              disabled
+              style={{ fontSize: 24, padding: '12px 20px', width: '100%' }}
+              className="glow"
+            />
+            {/* Outros elementos que devem ser exibidos quando isReady é true */}
+          </div>
+        )}
       </section>
     </>
   );

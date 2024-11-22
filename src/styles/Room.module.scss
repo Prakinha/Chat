@@ -1,6 +1,6 @@
 .clientInput {
   flex: 0 0 auto;
-
+// margin-top: auto; /* empurra o input para o final */
   display: flex;
   column-gap: 24px;
   flex-direction: row;
@@ -97,7 +97,7 @@
 
   overflow-y: auto;
   overflow-x: hidden;
-  max-height: 400px;
+  max-height: 800px;
   word-wrap: break-word;
 
   margin-bottom: 32px;
